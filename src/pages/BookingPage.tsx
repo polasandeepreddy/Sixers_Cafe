@@ -1,28 +1,27 @@
 import React, { useState } from 'react';
 import BookingForm from '../components/BookingForm';
 import BookingConfirmation from '../components/BookingConfirmation';
+import PaymentSummary from '../components/PaymentSummary';
 import { useBooking } from '../context/BookingContext';
 
 const BookingPage: React.FC = () => {
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
   const [bookingId, setBookingId] = useState('');
   const { formData, addBooking } = useBooking();
   
   const handleBookingSubmit = () => {
+    setShowPayment(true);
+  };
+
+  const handlePaymentComplete = (screenshot: string) => {
     const randomId = Math.random().toString(36).substring(2, 10).toUpperCase();
     
-    // Create new booking
-    const newBooking = {
+    // Create new booking with payment screenshot
+    addBooking({
       id: randomId,
-      fullName: formData.fullName,
-      mobileNumber: formData.mobileNumber,
-      date: formData.date,
-      slots: formData.selectedSlots,
-      createdAt: new Date().toISOString()
-    };
-    
-    // Add booking to context
-    addBooking(newBooking);
+      paymentScreenshot: screenshot
+    });
     
     setBookingId(randomId);
     setBookingConfirmed(true);
@@ -35,7 +34,11 @@ const BookingPage: React.FC = () => {
           <>
             <h1 className="text-3xl font-bold text-center mb-10">Book Your Cricket Slot</h1>
             <div className="max-w-2xl mx-auto">
-              <BookingForm onSubmit={handleBookingSubmit} />
+              {!showPayment ? (
+                <BookingForm onSubmit={handleBookingSubmit} />
+              ) : (
+                <PaymentSummary onPaymentComplete={handlePaymentComplete} />
+              )}
             </div>
           </>
         ) : (
