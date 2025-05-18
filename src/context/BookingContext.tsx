@@ -1,7 +1,7 @@
 // BookingContext.tsx
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { BookingFormData, Slot, Booking } from '../types';
-import { generateSlotsForDate, generateAvailableDates } from '../utils/mockData';
+import { generateSlotsForDate } from '../utils/mockData';
 import { format } from '../utils/dateUtils';
 import { db } from '../firebase';
 import {
@@ -11,13 +11,10 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot,
-  query,
-  where
 } from 'firebase/firestore';
 
 interface BookingContextType {
   formData: BookingFormData;
-  availableDates: string[];
   slots: Slot[];
   bookings: Booking[];
   totalAmount: number;
@@ -33,20 +30,23 @@ interface BookingContextType {
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
 export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [availableDates] = useState<string[]>(generateAvailableDates());
-  const initialDate = availableDates[0];
-  const [rawSlots, setRawSlots] = useState<Slot[]>(generateSlotsForDate(initialDate));
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const today = format(new Date()); // always today in YYYY-MM-DD or your format
+
+  // Set formData with fixed today date
   const [formData, setFormData] = useState<BookingFormData>({
     fullName: '',
     mobileNumber: '',
-    date: initialDate,
+    date: today,
     selectedSlots: [],
   });
 
+  // Generate slots only for today
+  const [rawSlots, setRawSlots] = useState<Slot[]>(generateSlotsForDate(today));
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
+
   const totalAmount = formData.selectedSlots.length * 600;
 
-  // 🔄 Realtime load bookings from Firestore
   useEffect(() => {
     try {
       const bookingsCol = collection(db, 'bookings');
@@ -65,22 +65,21 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, []);
 
+  // updateFormData now ignores any date updates and always forces today's date
   const updateFormData = (data: Partial<BookingFormData>) => {
     setFormData(prev => {
       const updated = { ...prev, ...data };
-      if (data.date && data.date !== prev.date) {
-        setRawSlots(generateSlotsForDate(data.date));
-        return { ...updated, selectedSlots: [] };
-      }
-      return updated;
+      updated.date = today; // force today only
+      setRawSlots(generateSlotsForDate(today));
+      return { ...updated, selectedSlots: [] };
     });
   };
 
-  // Dynamic slots availability based on current bookings
+  // Update slots availability for today only
   const slots = rawSlots.map(slot => {
     const isBooked = bookings.some(
       booking =>
-        booking.date === formData.date &&
+        booking.date === today &&
         booking.slots.some(bookedSlot => bookedSlot.id === slot.id)
     );
     return { ...slot, isAvailable: !isBooked };
@@ -102,8 +101,12 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const resetBooking = () => {
-    const today = format(new Date());
-    setFormData({ fullName: '', mobileNumber: '', date: today, selectedSlots: [] });
+    setFormData({
+      fullName: '',
+      mobileNumber: '',
+      date: today,
+      selectedSlots: [],
+    });
     setRawSlots(generateSlotsForDate(today));
   };
 
@@ -112,7 +115,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
       const newBooking: Omit<Booking, 'id'> = {
         fullName: formData.fullName,
         mobileNumber: formData.mobileNumber,
-        date: formData.date,
+        date: today,
         slots: formData.selectedSlots,
         createdAt: new Date().toISOString(),
         paymentStatus: 'pending',
@@ -155,7 +158,6 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     <BookingContext.Provider
       value={{
         formData,
-        availableDates,
         slots,
         bookings,
         totalAmount,
