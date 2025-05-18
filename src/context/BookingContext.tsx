@@ -1,7 +1,17 @@
+// BookingContext.tsx
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { BookingFormData, Slot, Booking } from '../types';
 import { generateSlotsForDate, generateAvailableDates } from '../utils/mockData';
 import { format } from '../utils/dateUtils';
+import { db } from '../firebase'; // ✅ import Firestore instance
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc
+} from 'firebase/firestore';
 
 interface BookingContextType {
   formData: BookingFormData;
@@ -24,16 +34,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [availableDates] = useState<string[]>(generateAvailableDates());
   const initialDate = availableDates[0];
   const [rawSlots, setRawSlots] = useState<Slot[]>(generateSlotsForDate(initialDate));
-
-  const [bookings, setBookings] = useState<Booking[]>(() => {
-    const stored = localStorage.getItem('bookings');
-    return stored ? JSON.parse(stored) : [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('bookings', JSON.stringify(bookings));
-  }, [bookings]);
-
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [formData, setFormData] = useState<BookingFormData>({
     fullName: '',
     mobileNumber: '',
@@ -42,6 +43,19 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
   });
 
   const totalAmount = formData.selectedSlots.length * 600;
+
+  // 🔄 Load bookings from Firebase
+  useEffect(() => {
+    const fetchBookings = async () => {
+      const snapshot = await getDocs(collection(db, 'bookings'));
+      const data: Booking[] = snapshot.docs.map(doc => ({
+        ...(doc.data() as Booking),
+        id: doc.id,
+      }));
+      setBookings(data);
+    };
+    fetchBookings();
+  }, []);
 
   const updateFormData = (data: Partial<BookingFormData>) => {
     setFormData(prev => {
@@ -85,9 +99,8 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     setRawSlots(generateSlotsForDate(today));
   };
 
-  const addBooking = (bookingData: Partial<Booking>) => {
-    const newBooking: Booking = {
-      id: Math.random().toString(36).substring(2, 10).toUpperCase(),
+  const addBooking = async (bookingData: Partial<Booking>) => {
+    const newBooking: Omit<Booking, 'id'> = {
       fullName: formData.fullName,
       mobileNumber: formData.mobileNumber,
       date: formData.date,
@@ -97,11 +110,15 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
       paymentScreenshot: bookingData.paymentScreenshot || null,
       totalAmount,
     };
-    setBookings(prev => [...prev, newBooking]);
+
+    const docRef = await addDoc(collection(db, 'bookings'), newBooking);
+    setBookings(prev => [...prev, { ...newBooking, id: docRef.id }]);
     resetBooking();
   };
 
-  const updateBookingStatus = (bookingId: string, status: 'approved' | 'rejected') => {
+  const updateBookingStatus = async (bookingId: string, status: 'approved' | 'rejected') => {
+    const ref = doc(db, 'bookings', bookingId);
+    await updateDoc(ref, { paymentStatus: status });
     setBookings(prev =>
       prev.map(booking =>
         booking.id === bookingId ? { ...booking, paymentStatus: status } : booking
@@ -109,7 +126,8 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     );
   };
 
-  const removeBooking = (bookingId: string) => {
+  const removeBooking = async (bookingId: string) => {
+    await deleteDoc(doc(db, 'bookings', bookingId));
     setBookings(prev => prev.filter(booking => booking.id !== bookingId));
   };
 
