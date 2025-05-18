@@ -3,14 +3,16 @@ import React, { createContext, useState, useContext, ReactNode, useEffect } from
 import { BookingFormData, Slot, Booking } from '../types';
 import { generateSlotsForDate, generateAvailableDates } from '../utils/mockData';
 import { format } from '../utils/dateUtils';
-import { db } from '../firebase'; // ✅ import Firestore instance
+import { db } from '../firebase';
 import {
   collection,
   addDoc,
-  getDocs,
   doc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  onSnapshot,
+  query,
+  where
 } from 'firebase/firestore';
 
 interface BookingContextType {
@@ -23,9 +25,9 @@ interface BookingContextType {
   selectSlot: (slot: Slot) => void;
   deselectSlot: (slotId: string) => void;
   resetBooking: () => void;
-  addBooking: (booking: Partial<Booking>) => void;
-  updateBookingStatus: (bookingId: string, status: 'approved' | 'rejected') => void;
-  removeBooking: (bookingId: string) => void;
+  addBooking: (booking: Partial<Booking>) => Promise<void>;
+  updateBookingStatus: (bookingId: string, status: 'approved' | 'rejected') => Promise<void>;
+  removeBooking: (bookingId: string) => Promise<void>;
 }
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
@@ -44,17 +46,23 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const totalAmount = formData.selectedSlots.length * 600;
 
-  // 🔄 Load bookings from Firebase
+  // 🔄 Realtime load bookings from Firestore
   useEffect(() => {
-    const fetchBookings = async () => {
-      const snapshot = await getDocs(collection(db, 'bookings'));
-      const data: Booking[] = snapshot.docs.map(doc => ({
-        ...(doc.data() as Booking),
-        id: doc.id,
-      }));
-      setBookings(data);
-    };
-    fetchBookings();
+    try {
+      const bookingsCol = collection(db, 'bookings');
+      const unsubscribe = onSnapshot(bookingsCol, snapshot => {
+        const data = snapshot.docs.map(doc => ({
+          ...(doc.data() as Booking),
+          id: doc.id,
+        }));
+        setBookings(data);
+      }, error => {
+        console.error('Firestore snapshot error:', error);
+      });
+      return () => unsubscribe();
+    } catch (error) {
+      console.error('Failed to subscribe to bookings:', error);
+    }
   }, []);
 
   const updateFormData = (data: Partial<BookingFormData>) => {
@@ -68,7 +76,7 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   };
 
-  // ✅ Dynamic slots based on current bookings
+  // Dynamic slots availability based on current bookings
   const slots = rawSlots.map(slot => {
     const isBooked = bookings.some(
       booking =>
@@ -82,14 +90,14 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!slot.isAvailable) return;
     setFormData(prev => ({
       ...prev,
-      selectedSlots: [...prev.selectedSlots, slot]
+      selectedSlots: [...prev.selectedSlots, slot],
     }));
   };
 
   const deselectSlot = (slotId: string) => {
     setFormData(prev => ({
       ...prev,
-      selectedSlots: prev.selectedSlots.filter(slot => slot.id !== slotId)
+      selectedSlots: prev.selectedSlots.filter(slot => slot.id !== slotId),
     }));
   };
 
@@ -100,35 +108,47 @@ export const BookingProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const addBooking = async (bookingData: Partial<Booking>) => {
-    const newBooking: Omit<Booking, 'id'> = {
-      fullName: formData.fullName,
-      mobileNumber: formData.mobileNumber,
-      date: formData.date,
-      slots: formData.selectedSlots,
-      createdAt: new Date().toISOString(),
-      paymentStatus: 'pending',
-      paymentScreenshot: bookingData.paymentScreenshot || null,
-      totalAmount,
-    };
+    try {
+      const newBooking: Omit<Booking, 'id'> = {
+        fullName: formData.fullName,
+        mobileNumber: formData.mobileNumber,
+        date: formData.date,
+        slots: formData.selectedSlots,
+        createdAt: new Date().toISOString(),
+        paymentStatus: 'pending',
+        paymentScreenshot: bookingData.paymentScreenshot || null,
+        totalAmount,
+      };
 
-    const docRef = await addDoc(collection(db, 'bookings'), newBooking);
-    setBookings(prev => [...prev, { ...newBooking, id: docRef.id }]);
-    resetBooking();
+      const docRef = await addDoc(collection(db, 'bookings'), newBooking);
+      setBookings(prev => [...prev, { ...newBooking, id: docRef.id }]);
+      resetBooking();
+    } catch (error) {
+      console.error('Failed to add booking:', error);
+    }
   };
 
   const updateBookingStatus = async (bookingId: string, status: 'approved' | 'rejected') => {
-    const ref = doc(db, 'bookings', bookingId);
-    await updateDoc(ref, { paymentStatus: status });
-    setBookings(prev =>
-      prev.map(booking =>
-        booking.id === bookingId ? { ...booking, paymentStatus: status } : booking
-      )
-    );
+    try {
+      const ref = doc(db, 'bookings', bookingId);
+      await updateDoc(ref, { paymentStatus: status });
+      setBookings(prev =>
+        prev.map(booking =>
+          booking.id === bookingId ? { ...booking, paymentStatus: status } : booking
+        )
+      );
+    } catch (error) {
+      console.error('Failed to update booking status:', error);
+    }
   };
 
   const removeBooking = async (bookingId: string) => {
-    await deleteDoc(doc(db, 'bookings', bookingId));
-    setBookings(prev => prev.filter(booking => booking.id !== bookingId));
+    try {
+      await deleteDoc(doc(db, 'bookings', bookingId));
+      setBookings(prev => prev.filter(booking => booking.id !== bookingId));
+    } catch (error) {
+      console.error('Failed to remove booking:', error);
+    }
   };
 
   return (
