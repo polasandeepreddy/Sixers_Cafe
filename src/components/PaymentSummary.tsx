@@ -32,7 +32,7 @@ const PaymentSummary: React.FC<PaymentSummaryProps> = ({ className = '', onPayme
 
   const upiDetails = {
     payeeName: "Sixers Cafe",
-    upiId: "sixers-cafe@upi",
+    upiId: "Q381279615@ybl",
     amount: totalAmount,
     note: `Booking for ${formatDisplayDate(date)}`
   };
