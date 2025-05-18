@@ -1,7 +1,8 @@
 import React from 'react';
 import { useBooking } from '../context/BookingContext';
 import SlotSelector from './SlotSelector';
-import { User, Smartphone, CalendarDays } from 'lucide-react';
+import DateSelector from './DateSelector';
+import { User, Smartphone } from 'lucide-react';
 
 interface BookingFormProps {
   className?: string;
@@ -9,9 +10,9 @@ interface BookingFormProps {
 }
 
 const BookingForm: React.FC<BookingFormProps> = ({ className = '', onSubmit }) => {
-  const { formData, updateFormData, availableDates } = useBooking();
+  const { formData, updateFormData } = useBooking();
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     updateFormData({ [name]: value });
   };
@@ -20,6 +21,10 @@ const BookingForm: React.FC<BookingFormProps> = ({ className = '', onSubmit }) =
     e.preventDefault();
     if (formData.selectedSlots.length === 0) {
       alert('Please select at least one slot');
+      return;
+    }
+    if (!formData.date) {
+      alert('Please select a date');
       return;
     }
     onSubmit();
@@ -70,30 +75,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ className = '', onSubmit }) =
       </div>
 
       {/* Date Selection */}
-      <div>
-        <label htmlFor="date" className="text-sm text-gray-700 flex items-center gap-1 mb-1">
-          <CalendarDays size={14} />
-          Select Date
-        </label>
-        <select
-          id="date"
-          name="date"
-          value={formData.date}
-          onChange={handleInputChange}
-          required
-          className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
-        >
-          {availableDates.map(date => (
-            <option key={date} value={date}>
-              {new Date(date).toLocaleDateString('en-IN', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-              })}
-            </option>
-          ))}
-        </select>
-      </div>
+      <DateSelector />
 
       {/* Slot Selector */}
       <SlotSelector className="pt-2" />
