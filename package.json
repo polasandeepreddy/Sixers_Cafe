@@ -37,6 +37,9 @@
     "vite": "^6.3.5"
   },
   "engines": {
-    "node": ">=18.17.0"
+    "node": ">=18.17.1"
   }
+  "npmConfig": {
+  "engine-strict": false
+}
 }
